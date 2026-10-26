@@ -680,3 +680,31 @@ class SoupStrainer(ElementFilter):
         :meta private:
         """
         return element if self.match(element) else None
+
+
+class SoupReplacer(object):
+    """Replaces tags *during parsing*, as the tree is being built.
+
+    Passed to the `BeautifulSoup` constructor as ``replacer=``. Every
+    occurrence of `og_tag` is created as `alt_tag` instead, so no second
+    pass over the finished parse tree is needed.
+    """
+
+    og_tag: str
+    alt_tag: str
+
+    def __init__(self, og_tag: str, alt_tag: str):
+        """Constructor.
+
+        :param og_tag: Name of the tag to replace.
+        :param alt_tag: Name of the tag that takes its place.
+        """
+        self.og_tag = og_tag
+        self.alt_tag = alt_tag
+
+    def replace(self, name: str) -> str:
+        """Return the name a tag called `name` should be given."""
+        return self.alt_tag if name == self.og_tag else name
+
+    def __repr__(self) -> str:
+        return f"SoupReplacer({self.og_tag!r}, {self.alt_tag!r})"
