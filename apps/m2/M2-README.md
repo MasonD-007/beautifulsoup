@@ -7,6 +7,7 @@ python task2.py <file>   # hyperlinks, SoupStrainer("a")
 python task3.py <file>   # all tags, SoupStrainer(True)
 python task4.py <file>   # tags with id, SoupStrainer(id=True)
 python task6.py <file>   # <b> -> <blockquote> during parsing, SoupReplacer
+python task7.py <file>   # <p> gets class="test" during parsing, SoupReplacer (optional extra)
 ```
 
 ## Part 1: SoupStrainer timings (M1 data, Python 3.13, macOS)
@@ -56,18 +57,23 @@ b_to_blockquote = SoupReplacer("b", "blockquote")
 print(BeautifulSoup(html_doc, replacer=b_to_blockquote).prettify())
 ```
 
+`SoupReplacer(og_tag, alt_tag)` is all the spec needs. It also takes an optional `attrs=` dict so
+Milestone-1 task 7 works during parsing too: `SoupReplacer("p", attrs={"class": "test"})` adds or
+replaces those attributes on every `<p>` (`alt_tag` defaults to `og_tag`, so the name is kept).
+
 Changes:
-- `bs4/filter.py`: new `SoupReplacer` class (`replace(name)` returns `alt_tag` for `og_tag`).
+- `bs4/filter.py`: new `SoupReplacer` class (`replace(name)` returns `alt_tag` for `og_tag`;
+  `replace_attrs(name, attrs)` merges `attrs` into the tag's attributes).
 - `bs4/__init__.py`: new `replacer=` constructor argument, stored as `self.replacer`;
-  `handle_starttag` renames the tag before creating it, and `handle_endtag` applies the same
+  `handle_starttag` applies the attributes and renames the tag before creating it, and `handle_endtag` applies the same
   rename so the end tag pops the renamed tag. Supported builders: `html.parser`, `lxml` (HTML)
   and `xml`, because they all call `handle_starttag`/`handle_endtag`. `html5lib` is **not**
   supported: it builds its own tree and hands it over, so the replacer has no effect. If `parse_only` is also given, the strainer matches on
   the original name and the replacer renames afterward.
-- Tests: `bs4/tests/test_soup_replacer.py` (2 test functions; one runs under `html.parser` and `lxml`).
+- Tests: `bs4/tests/test_soup_replacer.py` (3 test functions: rename, no-match/unchanged, and attrs; the rename and attrs tests run under `html.parser` and `lxml`).
   The full suite (with lxml and html5lib installed) has 7 failures
   (3 in `test_fuzz.py`, `test_rejected_input`, `test_real_xhtml_document`,
   `test_processing_instruction`, `test_out_of_range_entity`); the same 7 fail on the untouched
-  source, and the 3 new tests pass (825 passed vs 822 before).
+  source, and the new tests pass (827 passed vs 822 before).
 - App: `task6.py` (M1 task 6 via `SoupReplacer`). On `whatwg_html_spec.html` it produced
   1067 `<blockquote>` and no `<b>` in 10.99s.

@@ -244,8 +244,9 @@ class BeautifulSoup(Tag):
          when parsing part of a document that would otherwise be too
          large to fit into memory.
 
-        :param replacer: A SoupReplacer. Tags it names are renamed as
-         they are parsed, instead of in a later pass over the tree.
+        :param replacer: A SoupReplacer. Tags it names are renamed, and
+         given attributes, as they are parsed instead of in a later pass
+         over the tree.
 
         :param from_encoding: A string indicating the encoding of the
          document to be parsed. Pass this in if Beautiful Soup is
@@ -1034,6 +1035,7 @@ class BeautifulSoup(Tag):
             return None
 
         if self.replacer is not None:
+            attrs = self.replacer.replace_attrs(name, attrs)
             name = self.replacer.replace(name)
 
         tag_class = self.element_classes.get(Tag, Tag)

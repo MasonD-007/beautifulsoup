@@ -34,3 +34,16 @@ def test_other_tags_unchanged_and_default_is_noop():
         replacer=SoupReplacer("b", "blockquote"),
     )
     assert [t.name for t in combined.find_all(True)] == ["blockquote", "i", "blockquote"]
+
+
+@pytest.mark.parametrize("parser", ["html.parser", "lxml"])
+def test_adds_or_replaces_attributes(parser):
+    html = "<p>one</p><p class='old' id='keep'>two</p><div>three</div>"
+    replacer = SoupReplacer("p", attrs={"class": "test"})
+    soup = BeautifulSoup(html, parser, replacer=replacer)
+
+    paragraphs = soup.find_all("p")
+    assert [p["class"] for p in paragraphs] == [["test"], ["test"]]
+    # Existing attributes survive, and other tags are untouched.
+    assert paragraphs[1]["id"] == "keep"
+    assert soup.find("div").attrs == {}

@@ -686,25 +686,43 @@ class SoupReplacer(object):
     """Replaces tags *during parsing*, as the tree is being built.
 
     Passed to the `BeautifulSoup` constructor as ``replacer=``. Every
-    occurrence of `og_tag` is created as `alt_tag` instead, so no second
-    pass over the finished parse tree is needed.
+    occurrence of `og_tag` is created as `alt_tag` instead, and can be
+    given attributes, so no second pass over the finished parse tree is
+    needed.
     """
 
     og_tag: str
     alt_tag: str
+    attrs: Dict[str, str]
 
-    def __init__(self, og_tag: str, alt_tag: str):
+    def __init__(
+        self,
+        og_tag: str,
+        alt_tag: Optional[str] = None,
+        attrs: Optional[Dict[str, str]] = None,
+    ):
         """Constructor.
 
         :param og_tag: Name of the tag to replace.
-        :param alt_tag: Name of the tag that takes its place.
+        :param alt_tag: Name of the tag that takes its place. If omitted,
+          `og_tag` keeps its name.
+        :param attrs: Attributes to add to every `og_tag`, replacing any
+          existing attribute of the same name. For example,
+          ``SoupReplacer("p", attrs={"class": "test"})``.
         """
         self.og_tag = og_tag
-        self.alt_tag = alt_tag
+        self.alt_tag = og_tag if alt_tag is None else alt_tag
+        self.attrs = dict(attrs) if attrs else {}
 
     def replace(self, name: str) -> str:
         """Return the name a tag called `name` should be given."""
         return self.alt_tag if name == self.og_tag else name
 
+    def replace_attrs(self, name: str, attrs: Dict[str, str]) -> Dict[str, str]:
+        """Return the attributes a tag originally called `name` should get."""
+        if name != self.og_tag or not self.attrs:
+            return attrs
+        return {**attrs, **self.attrs}
+
     def __repr__(self) -> str:
-        return f"SoupReplacer({self.og_tag!r}, {self.alt_tag!r})"
+        return f"SoupReplacer({self.og_tag!r}, {self.alt_tag!r}, {self.attrs!r})"
