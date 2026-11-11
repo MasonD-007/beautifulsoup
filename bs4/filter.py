@@ -685,21 +685,34 @@ class SoupStrainer(ElementFilter):
 class SoupReplacer(object):
     """Replaces tags *during parsing*, as the tree is being built.
 
-    Passed to the `BeautifulSoup` constructor as ``replacer=``. Every
-    occurrence of `og_tag` is created as `alt_tag` instead, and can be
-    given attributes, so no second pass over the finished parse tree is
-    needed.
+    Passed to the `BeautifulSoup` constructor as ``replacer=``. There are
+    two ways to describe a replacement, and they can be combined:
+
+    * Name pairs: ``SoupReplacer("b", "blockquote")`` creates every
+      ``<b>`` as a ``<blockquote>``; ``attrs=`` adds attributes.
+    * Transformers: functions that receive each tag as it is created.
+      ``name_xformer(tag)`` returns the tag's new name,
+      ``attrs_xformer(tag)`` returns its new attribute dictionary, and
+      ``xformer(tag)`` may change the tag in any way and returns nothing.
+
+    Either way no second pass over the finished parse tree is needed.
     """
 
-    og_tag: str
-    alt_tag: str
+    og_tag: Optional[str]
+    alt_tag: Optional[str]
     attrs: Dict[str, str]
+    name_xformer: Optional[Callable[[Any], str]]
+    attrs_xformer: Optional[Callable[[Any], Dict[str, Any]]]
+    xformer: Optional[Callable[[Any], None]]
 
     def __init__(
         self,
-        og_tag: str,
+        og_tag: Optional[str] = None,
         alt_tag: Optional[str] = None,
         attrs: Optional[Dict[str, str]] = None,
+        name_xformer: Optional[Callable[[Any], str]] = None,
+        attrs_xformer: Optional[Callable[[Any], Dict[str, Any]]] = None,
+        xformer: Optional[Callable[[Any], None]] = None,
     ):
         """Constructor.
 
@@ -709,14 +722,29 @@ class SoupReplacer(object):
         :param attrs: Attributes to add to every `og_tag`, replacing any
           existing attribute of the same name. For example,
           ``SoupReplacer("p", attrs={"class": "test"})``.
+        :param name_xformer: Called with every new tag; returns the name
+          the tag should have.
+        :param attrs_xformer: Called with every new tag; returns the
+          attribute dictionary the tag should have.
+        :param xformer: Called with every new tag, after the two functions
+          above have been applied. It may modify the tag (for example
+          ``del tag.attrs["class"]``); its return value is ignored.
+
+        Both `name_xformer` and `attrs_xformer` see the tag as it was
+        parsed, not as the other one changed it.
         """
         self.og_tag = og_tag
         self.alt_tag = og_tag if alt_tag is None else alt_tag
         self.attrs = dict(attrs) if attrs else {}
+        self.name_xformer = name_xformer
+        self.attrs_xformer = attrs_xformer
+        self.xformer = xformer
 
     def replace(self, name: str) -> str:
         """Return the name a tag called `name` should be given."""
-        return self.alt_tag if name == self.og_tag else name
+        if self.og_tag is not None and name == self.og_tag:
+            return cast(str, self.alt_tag)
+        return name
 
     def replace_attrs(self, name: str, attrs: Dict[str, str]) -> Dict[str, str]:
         """Return the attributes a tag originally called `name` should get."""
@@ -724,5 +752,26 @@ class SoupReplacer(object):
             return attrs
         return {**attrs, **self.attrs}
 
+    def transform(self, tag: Any) -> None:
+        """Apply the transformer functions to a freshly created `tag`.
+
+        Called by `BeautifulSoup.handle_starttag`. Changes `tag` in place.
+        """
+        new_name = self.name_xformer(tag) if self.name_xformer else tag.name
+        new_attrs = self.attrs_xformer(tag) if self.attrs_xformer else tag.attrs
+        tag.name = new_name
+        tag.attrs = new_attrs
+        if self.xformer:
+            self.xformer(tag)
+
+    @property
+    def has_xformers(self) -> bool:
+        """True if any transformer function was given."""
+        return bool(self.name_xformer or self.attrs_xformer or self.xformer)
+
     def __repr__(self) -> str:
-        return f"SoupReplacer({self.og_tag!r}, {self.alt_tag!r}, {self.attrs!r})"
+        return (
+            f"SoupReplacer({self.og_tag!r}, {self.alt_tag!r}, {self.attrs!r}, "
+            f"name_xformer={self.name_xformer!r}, "
+            f"attrs_xformer={self.attrs_xformer!r}, xformer={self.xformer!r})"
+        )

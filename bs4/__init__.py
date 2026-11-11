@@ -99,6 +99,7 @@ from typing import (
     cast,
     Counter as CounterType,
     Dict,
+    Tuple,
     Iterator,
     List,
     Sequence,
@@ -244,9 +245,9 @@ class BeautifulSoup(Tag):
          when parsing part of a document that would otherwise be too
          large to fit into memory.
 
-        :param replacer: A SoupReplacer. Tags it names are renamed, and
-         given attributes, as they are parsed instead of in a later pass
-         over the tree.
+        :param replacer: A SoupReplacer. Tags are renamed, given attributes, or
+         transformed by its functions as they are parsed, instead of in a
+         later pass over the tree.
 
         :param from_encoding: A string indicating the encoding of the
          document to be parsed. Pass this in if Beautiful Soup is
@@ -444,6 +445,7 @@ class BeautifulSoup(Tag):
         self._namespaces = dict()
         self.parse_only = parse_only
         self.replacer = replacer
+        self._parsed_names: Dict[int, Tuple[str, Optional[str]]] = {}
 
         if hasattr(markup, "read"):  # It's a file-type object.
             markup = markup.read()
@@ -1034,6 +1036,7 @@ class BeautifulSoup(Tag):
         ):
             return None
 
+        parsed_name = name
         if self.replacer is not None:
             attrs = self.replacer.replace_attrs(name, attrs)
             name = self.replacer.replace(name)
@@ -1057,6 +1060,12 @@ class BeautifulSoup(Tag):
         )
         if tag is None:
             return tag
+        if self.replacer is not None and self.replacer.has_xformers:
+            self._apply_xformers(tag)
+        if self.replacer is not None:
+            # Remember what the parser called this tag, so its end tag
+            # (which uses that name) can find it again.
+            self._parsed_names[id(tag)] = (parsed_name, nsprefix)
         if self._most_recent_element is not None:
             self._most_recent_element.next_element = tag
         self._most_recent_element = tag
@@ -1074,8 +1083,33 @@ class BeautifulSoup(Tag):
         # print("End tag: " + name)
         self.endData()
         if self.replacer is not None:
-            name = self.replacer.replace(name)
+            # The end tag carries the name the parser saw, which a
+            # replacer may have changed. Close the innermost open tag
+            # that was parsed under that name.
+            for i in range(len(self.tagStack) - 1, 0, -1):
+                if self._parsed_names.get(id(self.tagStack[i])) == (name, nsprefix):
+                    while self.tagStack[-1] is not self.tagStack[i]:
+                        self.popTag()
+                    self.popTag()
+                    return
         self._popToTag(name, nsprefix)
+
+    def _apply_xformers(self, tag: Tag) -> None:
+        """Run the replacer's transformer functions on a new `tag`, then
+        refresh the parts of the tag that were derived from its old name
+        and attributes.
+
+        :meta private:
+        """
+        assert self.replacer is not None
+        old_name = tag.name
+        self.replacer.transform(tag)
+        if tag.name != old_name:
+            tag.can_be_empty_element = self.builder.can_be_empty_element(tag.name)
+        if self.builder.cdata_list_attributes:
+            tag.attrs = self.builder._replace_cdata_list_attribute_values(
+                tag.name, tag.attrs
+            )
 
     def handle_data(self, data: str) -> None:
         """Called by the tree builder when a chunk of textual data is
