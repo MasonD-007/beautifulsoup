@@ -674,6 +674,22 @@ class BeautifulSoup(Tag):
         ):
             self.popTag()
 
+    def __iter__(self) -> Iterator[PageElement]:
+        """Iterate over every node in the document, in document order.
+
+        Unlike `Tag.__iter__`, which yields only a tag's direct
+        children, this walks the whole tree (tags and strings alike),
+        one node at a time. The walk follows each node's `next_element`
+        link, so nothing is collected into a list, and the successor is
+        looked up before a node is yielded so the caller may modify the
+        node it was just given.
+        """
+        current = self.contents[0] if self.contents else None
+        while current is not None:
+            successor = current.next_element
+            yield current
+            current = successor
+
     def reset(self) -> None:
         """Reset this object to a state as though it had never parsed any
         markup.
